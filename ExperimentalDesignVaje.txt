@@ -1,0 +1,191 @@
+## Measurement characteristics
+import numpy as np
+import pandas as pd 
+import random
+
+# Load data 
+post_fn = 'https://raw.githubusercontent.com/andrejkk/UPK_DataImgs/master/2020-2021_PredPost-vprasalnik(dvogovor)(Responses).csv'
+#post_fn = 'https://raw.githubusercontent.com/andrejkk/UPK_DataImgs/master/PostQs_Responses.csv'
+data_df = pd.read_csv(post_fn, header=0, sep=';', encoding='utf8').drop([13])
+
+
+# Selectors 
+pre_qs_inds = list(range(5,11))
+post_qs_inds = list(range(11,36))
+
+
+# ==============================================================================================
+## Validitiy
+# We estimate is OK
+
+# ==============================================================================================
+## Reliability
+
+# Parallel forms - inter method reliability: divide test tasks to two parts and corelate anwsers 
+# Split half
+np.random.shuffle(post_qs_inds)
+perm_inds_1, perm_inds_2 = post_qs_inds[0:12], post_qs_inds[12:24] 
+anws_1, anws_2 = data_df.iloc[:, perm_inds_1], data_df.iloc[:, perm_inds_2]
+
+
+# Get correlation coefficient
+half1_pd = anws_1.sum(axis=1)
+half2_pd = anws_2.sum(axis=1)
+corr = np.corrcoef(half1_pd, half2_pd)[0,1]
+
+
+# ==============================================================================================
+print ('====================================================================================')
+print ('== For instruments')
+# Spearman–Brown prediction formula
+# Equal variances
+req_tt = 2*corr / (1.0 + corr)
+print ('Equal var, r_tt=', req_tt)
+
+# Non-equal variances
+sd1, sd2 = np.std(half1_pd), np.std(half2_pd) 
+rneq_tt = 4*sd1*sd2*corr / (sd1**2 + sd2**2 +  2*sd1*sd2*corr)
+print ('Std 1 = ', sd1)
+print ('Std 2 = ', sd2)
+print ('Not equal var, r_tt=', rneq_tt)
+
+
+## ==============================================================
+# Internal consistency - Cronbach alpha
+# Verifies the instrument as a whole
+
+post_qs_df = data_df.iloc[:, 11:36]
+_,K = post_qs_df.shape
+X = post_qs_df.sum(axis=1)
+ss_X = np.var(X, ddof=1)
+ss_Yi = np.var(post_qs_df, ddof=1)
+ss_Y = ss_Yi.sum()
+
+Cronb_a = (K/(K-1))*(1.0 - ss_Y/ss_X)
+print ('Cronbach Alpha =', Cronb_a)
+
+
+
+
+
+
+
+
+
+
+# ===============================================================================================
+# Get scores - latent variables
+
+## Estimate quality of speech interface 
+# User Goal Orientation = UGO: 8 items, a = .92
+# Customer Service Behaviors = CSB: 8 items, a = .89
+# Speech Characteristics = SC: 5 items
+# Verbosity = V: 4 items, a = .69
+
+
+import numpy as np
+import pandas as pd 
+from scipy.optimize import minimize
+
+
+# @brief reshape ND array to 1D as required by binary FA
+# @arg nS number of samples
+# @arg nQ number of questions
+def reshape_NDto1D(a_nparr, nS, nQ):
+    return a_nparr.T.reshape(nS*nQ)
+
+
+# @brief reshape 1D array back to ND as required by binary FA
+# @arg nS number of samples
+# @arg nQ number of questions
+def reshape_1DtoND(a_nparr, nS, nQ):    
+    return a_nparr.reshape(nQ, nS).T
+
+
+# @brief Get linear scores using direct optimisation. 
+# @arg qa_mat anwsers matrix, users raws, questions columns
+# @arg la_mat loadings  
+# @arg cls0_trsh=0.5 ignored
+# @ret S_star resulting scores
+def get_linear_scores_D(qa_mat, la_mat, cls0_trsh=0.5):
+    
+    nS, nQ = qa_mat.shape # Number of samples and number of questions
+    _, nF = la_mat.shape # Number of factors
+
+
+    reg_la = 1.0 # Regularisation constant
+
+    # Cost function    
+    def cost_f(Sc_1D):
+        Sc = reshape_1DtoND(Sc_1D, nS, nF)
+        err_mat = qa_mat - Sc @ la_mat.T
+        cost_err = np.linalg.norm(err_mat) + reg_la*np.abs(1 - np.linalg.norm(Sc))
+        return cost_err
+
+
+    # Minimsation
+    S0 = np.ones((nS, nF)) / (1.0*np.sqrt(nS)) # To start with |S0|_2 = 1
+    S0_1D = reshape_NDto1D(S0, nS, nF)
+    
+    
+    res = minimize(cost_f, S0_1D) #, method='nelder-mead',
+               #options={'xatol': 1e-8, 'disp': True})
+    
+    S_star = reshape_1DtoND(res.x, nS, nF) # This are scores    
+    
+    return S_star
+
+
+
+# ---------------------------------------------------------------------------
+# Load data 
+post_fn = 'https://raw.githubusercontent.com/andrejkk/UPK_DataImgs/master/2020-2021_PredPost-vprasalnik(dvogovor)(Responses).csv'
+data_df = pd.read_csv(post_fn, header=0, sep=';', encoding='utf8')
+
+#qs_weights_fn = 'https://raw.githubusercontent.com/andrejkk/UPK_DataImgs/master/QualityOfConvSys_Weights.cvs'
+#qs_weights_df = pd.read_csv(qs_weights_fn, header=0, sep=';', encoding='utf8')
+
+qs_weights_df = pd.DataFrame(
+[[0.799, 0, 0, 0],
+[0, 0, 0, 0.706],
+[0.8, 0, 0, 0],
+[0, 0.711, 0, 0],
+[0.805, 0, 0, 0],
+[0, 0.758, 0, 0],
+[0.628, 0, 0, 0],
+[0, 0, 0, 0.701],
+[0, 0.736, 0, 0],
+[0.831, 0, 0, 0],
+[0, 0.739, 0, 0],
+[0.834, 0, 0, 0],
+[0.858, 0, 0, 0],
+[0, 0.726, 0, 0],
+[0, 0, 0, 0.655],
+[0, 0, 0.585, 0],
+[0.834, 0, 0, 0],
+[0, 0, 0.808, 0],
+[0.794, 0, 0, 0],
+[0, 0, 0.797, 0],
+[0, 0.599, 0, 0],
+[0, 0, 0, 0.73],
+[0, 0.648, 0, 0],
+[0, 0, 0.658, 0],
+[0, 0.668, 0, 0]])
+
+
+
+
+# Selectors 
+post_qs_inds = list(range(11,36))
+data_qs_df = data_df.iloc[:, post_qs_inds].drop([13])
+
+
+# Estimate latent variables
+qa_mat = data_qs_df.to_numpy()
+la_mat = qs_weights_df.to_numpy()
+speech_quality_est_np = get_linear_scores_D(qa_mat, la_mat) # was data_qs_df.dot(qs_weights_df.to_numpy())
+
+speech_quality_est_df = pd.DataFrame(speech_quality_est_np)
+speech_quality_est_df.columns = ['UGO', 'CSB', 'SC', 'V']
+
+speech_quality_est_df
